@@ -8,32 +8,13 @@
 // └────────────────────────────────────────────────────────────────────┘ \\
 
 (function () {
-    var SPARKLINE_HISTORY_LENGTH = 100;
-    var valueStyle = freeboard.getStyleString("values");
+	var SPARKLINE_HISTORY_LENGTH = 100;
+	var SPARKLINE_COLORS = ["#FF9900", "#FFFFFF", "#B3B4B4", "#6B6B6B", "#28DE28", "#13F7F9", "#E6EE18", "#C41204", "#CA3CB8", "#0B1CFB"];
 
-    valueStyle +=
-        "overflow: hidden;" +
-            "text-overflow: ellipsis;" +
-            "display: inline;";
+    function easeTransitionText(newValue, textElement, duration) {
 
-    // Add some styles to our sheet
-    freeboard.addStyle('.text-widget-unit', 'padding-left: 5px;display:inline;');
-    freeboard.addStyle('.text-widget-regular-value', valueStyle + "font-size:30px;");
-    freeboard.addStyle('.text-widget-big-value', valueStyle + "font-size:75px;");
+		var currentValue = $(textElement).text();
 
-    freeboard.addStyle('.gauge-widget-wrapper', "width: 100%;text-align: center;");
-    freeboard.addStyle('.gauge-widget', "width:200px;height:160px;display:inline-block;");
-
-    freeboard.addStyle('.sparkline', "width:100%;height: 75px;");
-    freeboard.addStyle('.sparkline-inline', "width:50%;float:right;height:30px;");
-
-    freeboard.addStyle('.indicator-light', "border-radius:50%;width:22px;height:22px;border:2px solid #3d3d3d;margin-top:5px;float:left;background-color:#222;margin-right:10px;");
-    freeboard.addStyle('.indicator-light.on', "background-color:#FFC773;box-shadow: 0px 0px 15px #FF9900;border-color:#FDF1DF;");
-    freeboard.addStyle('.indicator-text', "margin-top:10px;");
-
-    freeboard.addStyle('div.pointer-value', "position:absolute;height:95px;margin: auto;top: 0px;bottom: 0px;width: 100%;text-align:center;");
-
-    function easeTransitionText(currentValue, newValue, textElement, duration) {
         if (currentValue == newValue)
             return;
 
@@ -67,78 +48,225 @@
         }
     }
 
-    function addValueToSparkline(element, value) {
-        var values = $(element).data().values;
+	function addSparklineLegend(element, legend) {
+		var legendElt = $("<div class='sparkline-legend'></div>");
+		for(var i=0; i<legend.length; i++) {
+			var color = SPARKLINE_COLORS[i % SPARKLINE_COLORS.length];
+			var label = legend[i];
+			legendElt.append("<div class='sparkline-legend-value'><span style='color:" +
+							 color + "'>&#9679;</span>" + label + "</div>");
+		}
+		element.empty().append(legendElt);
 
-        if (!values) {
-            values = [];
-        }
+		freeboard.addStyle('.sparkline-legend', "margin:5px;");
+		freeboard.addStyle('.sparkline-legend-value',
+			'color:white; font:10px arial,san serif; float:left; overflow:hidden; width:50%;');
+		freeboard.addStyle('.sparkline-legend-value span',
+			'font-weight:bold; padding-right:5px;');
+	}
 
-        if (values.length >= SPARKLINE_HISTORY_LENGTH) {
-            values.shift();
-        }
+	function addValueToSparkline(element, value, legend) {
+		var values = $(element).data().values;
+		var valueMin = $(element).data().valueMin;
+		var valueMax = $(element).data().valueMax;
+		if (!values) {
+			values = [];
+			valueMin = undefined;
+			valueMax = undefined;
+		}
 
-        //if(_.isNumber(value))
-        //{
-        values.push(Number(value));
+		var collateValues = function(val, plotIndex) {
+			if(!values[plotIndex]) {
+				values[plotIndex] = [];
+			}
+			if (values[plotIndex].length >= SPARKLINE_HISTORY_LENGTH) {
+				values[plotIndex].shift();
+			}
+			values[plotIndex].push(Number(val));
 
-        $(element).data().values = values;
+			if(valueMin === undefined || val < valueMin) {
+				valueMin = val;
+			}
+			if(valueMax === undefined || val > valueMax) {
+				valueMax = val;
+			}
+		}
 
-        $(element).sparkline(values, {
-            type: "line",
-            height: "100%",
-            width: "100%",
-            fillColor: false,
-            lineColor: "#FF9900",
-            lineWidth: 2,
-            spotRadius: 3,
-            spotColor: false,
-            minSpotColor: "#78AB49",
-            maxSpotColor: "#78AB49",
-            highlightSpotColor: "#9D3926",
-            highlightLineColor: "#9D3926"
-        });
-        //}
-    }
+		if(_.isArray(value)) {
+			_.each(value, collateValues);
+		} else {
+			collateValues(value, 0);
+		}
+		$(element).data().values = values;
+		$(element).data().valueMin = valueMin;
+		$(element).data().valueMax = valueMax;
+
+		var tooltipHTML = '<span style="color: {{color}}">&#9679;</span> {{y}}';
+
+		var composite = false;
+		_.each(values, function(valueArray, valueIndex) {
+			$(element).sparkline(valueArray, {
+				type: "line",
+				composite: composite,
+				height: "100%",
+				width: "100%",
+				fillColor: false,
+				lineColor: SPARKLINE_COLORS[valueIndex % SPARKLINE_COLORS.length],
+				lineWidth: 2,
+				spotRadius: 3,
+				spotColor: false,
+				minSpotColor: "#78AB49",
+				maxSpotColor: "#78AB49",
+				highlightSpotColor: "#9D3926",
+				highlightLineColor: "#9D3926",
+				chartRangeMin: valueMin,
+				chartRangeMax: valueMax,
+				tooltipFormat: (legend && legend[valueIndex])?tooltipHTML + ' (' + legend[valueIndex] + ')':tooltipHTML
+			});
+			composite = true;
+		});
+	}
+
+	var valueStyle = freeboard.getStyleString("values");
+
+	freeboard.addStyle('.widget-big-text', valueStyle + "font-size:75px;");
+
+	freeboard.addStyle('.tw-display', 'width: 100%; height:100%; display:table; table-layout:fixed;');
+
+	freeboard.addStyle('.tw-tr',
+		'display:table-row;');
+
+	freeboard.addStyle('.tw-tg',
+		'display:table-row-group;');
+
+	freeboard.addStyle('.tw-tc',
+		'display:table-caption;');
+
+	freeboard.addStyle('.tw-td',
+		'display:table-cell;');
+
+	freeboard.addStyle('.tw-value',
+		valueStyle +
+		'overflow: hidden;' +
+		'display: inline-block;' +
+		'text-overflow: ellipsis;');
+
+	freeboard.addStyle('.tw-unit',
+		'display: inline-block;' +
+		'padding-left: 10px;' +
+		'padding-bottom: 1.1em;' +
+		'vertical-align: bottom;');
+
+	freeboard.addStyle('.tw-value-wrapper',
+		'position: relative;' +
+		'vertical-align: middle;' +
+		'height:100%;');
+
+	freeboard.addStyle('.tw-sparkline',
+		'height:20px;');
 
     var textWidget = function (settings) {
+
         var self = this;
 
         var currentSettings = settings;
-        var titleElement = $('<h2 class="section-title"></h2>');
-        var valueElement = $('<div></div>');
-        var unitsElement = $('<div class="text-widget-unit"></div>');
-        var sparklineElement = $('<span class="sparkline-inline"></span>');
-        var currentValue;
+		var displayElement = $('<div class="tw-display"></div>');
+		var titleElement = $('<h2 class="section-title tw-title tw-td"></h2>');
+        var valueElement = $('<div class="tw-value"></div>');
+        var unitsElement = $('<div class="tw-unit"></div>');
+        var sparklineElement = $('<div class="tw-sparkline tw-td"></div>');
+
+		function updateValueSizing()
+		{
+			if(!_.isUndefined(currentSettings.units) && currentSettings.units != "") // If we're displaying our units
+			{
+				valueElement.css("max-width", (displayElement.innerWidth() - unitsElement.outerWidth(true)) + "px");
+			}
+			else
+			{
+				valueElement.css("max-width", "100%");
+			}
+		}
 
         this.render = function (element) {
-            $(element).append(titleElement).append(valueElement).append(unitsElement).append(sparklineElement);
+			$(element).empty();
+
+			$(displayElement)
+				.append($('<div class="tw-tr"></div>').append(titleElement))
+				.append($('<div class="tw-tr"></div>').append($('<div class="tw-value-wrapper tw-td"></div>').append(valueElement).append(unitsElement)))
+				.append($('<div class="tw-tr"></div>').append(sparklineElement));
+
+			$(element).append(displayElement);
+
+			updateValueSizing();
         }
 
         this.onSettingsChanged = function (newSettings) {
             currentSettings = newSettings;
-            titleElement.html((_.isUndefined(newSettings.title) ? "" : newSettings.title));
 
-            valueElement
-                .toggleClass("text-widget-regular-value", (newSettings.size == "regular"))
-                .toggleClass("text-widget-big-value", (newSettings.size == "big"));
+			var shouldDisplayTitle = (!_.isUndefined(newSettings.title) && newSettings.title != "");
+			var shouldDisplayUnits = (!_.isUndefined(newSettings.units) && newSettings.units != "");
 
-            unitsElement.html((_.isUndefined(newSettings.units) ? "" : newSettings.units));
+			if(newSettings.sparkline)
+			{
+				sparklineElement.attr("style", null);
+			}
+			else
+			{
+				delete sparklineElement.data().values;
+				sparklineElement.empty();
+				sparklineElement.hide();
+			}
 
-            if (newSettings.sparkline) {
-                sparklineElement.show();
-            }
-            else {
-                delete sparklineElement.data().values;
-                sparklineElement.empty();
-                sparklineElement.hide();
-            }
+			if(shouldDisplayTitle)
+			{
+				titleElement.html((_.isUndefined(newSettings.title) ? "" : newSettings.title));
+				titleElement.attr("style", null);
+			}
+			else
+			{
+				titleElement.empty();
+				titleElement.hide();
+			}
+
+			if(shouldDisplayUnits)
+			{
+				unitsElement.html((_.isUndefined(newSettings.units) ? "" : newSettings.units));
+				unitsElement.attr("style", null);
+			}
+			else
+			{
+				unitsElement.empty();
+				unitsElement.hide();
+			}
+
+			var valueFontSize = 30;
+
+			if(newSettings.size == "big")
+			{
+				valueFontSize = 75;
+
+				if(newSettings.sparkline)
+				{
+					valueFontSize = 60;
+				}
+			}
+
+			valueElement.css({"font-size" : valueFontSize + "px"});
+
+			updateValueSizing();
         }
+
+		this.onSizeChanged = function()
+		{
+			updateValueSizing();
+		}
 
         this.onCalculatedValueChanged = function (settingName, newValue) {
             if (settingName == "value") {
+
                 if (currentSettings.animate) {
-                    easeTransitionText(currentValue, newValue, valueElement, 500);
+                    easeTransitionText(newValue, valueElement, 500);
                 }
                 else {
                     valueElement.text(newValue);
@@ -147,8 +275,6 @@
                 if (currentSettings.sparkline) {
                     addValueToSparkline(sparklineElement, newValue);
                 }
-
-                currentValue = newValue;
             }
         }
 
@@ -157,7 +283,7 @@
         }
 
         this.getHeight = function () {
-            if (currentSettings.size == "big") {
+            if (currentSettings.size == "big" || currentSettings.sparkline) {
                 return 2;
             }
             else {
@@ -171,6 +297,9 @@
     freeboard.loadWidgetPlugin({
         type_name: "text_widget",
         display_name: "Text",
+        "external_scripts" : [
+            "plugins/thirdparty/jquery.sparkline.min.js"
+        ],
         settings: [
             {
                 name: "title",
@@ -220,6 +349,8 @@
     });
 
     var gaugeID = 0;
+	freeboard.addStyle('.gauge-widget-wrapper', "width: 100%;text-align: center;");
+	freeboard.addStyle('.gauge-widget', "width:200px;height:160px;display:inline-block;");
 
     var gaugeWidget = function (settings) {
         var self = this;
@@ -288,6 +419,10 @@
     freeboard.loadWidgetPlugin({
         type_name: "gauge",
         display_name: "Gauge",
+        "external_scripts" : [
+            "plugins/thirdparty/raphael.2.1.0.min.js",
+            "plugins/thirdparty/justgage.1.0.1.js"
+        ],
         settings: [
             {
                 name: "title",
@@ -322,29 +457,51 @@
         }
     });
 
+
+	freeboard.addStyle('.sparkline', "width:100%;height: 75px;");
     var sparklineWidget = function (settings) {
         var self = this;
 
         var titleElement = $('<h2 class="section-title"></h2>');
         var sparklineElement = $('<div class="sparkline"></div>');
+		var sparklineLegend = $('<div></div>');
+		var currentSettings = settings;
 
         this.render = function (element) {
-            $(element).append(titleElement).append(sparklineElement);
+            $(element).append(titleElement).append(sparklineElement).append(sparklineLegend);
         }
 
         this.onSettingsChanged = function (newSettings) {
+			currentSettings = newSettings;
             titleElement.html((_.isUndefined(newSettings.title) ? "" : newSettings.title));
+
+			if(newSettings.include_legend) {
+				addSparklineLegend(sparklineLegend,  newSettings.legend.split(","));
+			}
         }
 
         this.onCalculatedValueChanged = function (settingName, newValue) {
-            addValueToSparkline(sparklineElement, newValue);
+			if (currentSettings.legend) {
+				addValueToSparkline(sparklineElement, newValue, currentSettings.legend.split(","));
+			} else {
+				addValueToSparkline(sparklineElement, newValue);
+			}
         }
 
         this.onDispose = function () {
         }
 
         this.getHeight = function () {
-            return 2;
+			var legendHeight = 0;
+			if (currentSettings.include_legend && currentSettings.legend) {
+				var legendLength = currentSettings.legend.split(",").length;
+				if (legendLength > 4) {
+					legendHeight = Math.floor((legendLength-1) / 4) * 0.5;
+				} else if (legendLength) {
+					legendHeight = 0.5;
+				}
+			}
+			return 2 + legendHeight;
         }
 
         this.onSettingsChanged(settings);
@@ -353,6 +510,9 @@
     freeboard.loadWidgetPlugin({
         type_name: "sparkline",
         display_name: "Sparkline",
+        "external_scripts" : [
+            "plugins/thirdparty/jquery.sparkline.min.js"
+        ],
         settings: [
             {
                 name: "title",
@@ -362,14 +522,27 @@
             {
                 name: "value",
                 display_name: "Value",
-                type: "calculated"
-            }
+                type: "calculated",
+				multi_input: "true"
+            },
+			{
+				name: "include_legend",
+				display_name: "Include Legend",
+				type: "boolean"
+			},
+			{
+				name: "legend",
+				display_name: "Legend",
+				type: "text",
+				description: "Comma-separated for multiple sparklines"
+			}
         ],
         newInstance: function (settings, newInstanceCallback) {
             newInstanceCallback(new sparklineWidget(settings));
         }
     });
 
+	freeboard.addStyle('div.pointer-value', "position:absolute;height:95px;margin: auto;top: 0px;bottom: 0px;width: 100%;text-align:center;");
     var pointerWidget = function (settings) {
         var self = this;
         var paper;
@@ -377,7 +550,7 @@
         var triangle;
         var width, height;
         var currentValue = 0;
-        var valueDiv = $('<div class="text-widget-big-value"></div>');
+        var valueDiv = $('<div class="widget-big-text"></div>');
         var unitsDiv = $('<div></div>');
 
         function polygonPath(points) {
@@ -448,6 +621,9 @@
     freeboard.loadWidgetPlugin({
         type_name: "pointer",
         display_name: "Pointer",
+        "external_scripts" : [
+            "plugins/thirdparty/raphael.2.1.0.min.js"
+        ],
         settings: [
             {
                 name: "direction",
@@ -567,6 +743,9 @@
         }
     });
 
+	freeboard.addStyle('.indicator-light', "border-radius:50%;width:22px;height:22px;border:2px solid #3d3d3d;margin-top:5px;float:left;background-color:#222;margin-right:10px;");
+	freeboard.addStyle('.indicator-light.on', "background-color:#FFC773;box-shadow: 0px 0px 15px #FF9900;border-color:#FDF1DF;");
+	freeboard.addStyle('.indicator-text', "margin-top:10px;");
     var indicatorWidget = function (settings) {
         var self = this;
         var titleElement = $('<h2 class="section-title"></h2>');
@@ -574,15 +753,17 @@
         var indicatorElement = $('<div class="indicator-light"></div>');
         var currentSettings = settings;
         var isOn = false;
+        var onText;
+        var offText;
 
         function updateState() {
             indicatorElement.toggleClass("on", isOn);
 
             if (isOn) {
-                stateElement.text((_.isUndefined(currentSettings.on_text) ? "" : currentSettings.on_text));
+                stateElement.text((_.isUndefined(onText) ? (_.isUndefined(currentSettings.on_text) ? "" : currentSettings.on_text) : onText));
             }
             else {
-                stateElement.text((_.isUndefined(currentSettings.off_text) ? "" : currentSettings.off_text));
+                stateElement.text((_.isUndefined(offText) ? (_.isUndefined(currentSettings.off_text) ? "" : currentSettings.off_text) : offText));
             }
         }
 
@@ -599,6 +780,12 @@
         this.onCalculatedValueChanged = function (settingName, newValue) {
             if (settingName == "value") {
                 isOn = Boolean(newValue);
+            }
+            if (settingName == "on_text") {
+                onText = newValue;
+            }
+            if (settingName == "off_text") {
+                offText = newValue;
             }
 
             updateState();
@@ -618,26 +805,26 @@
         type_name: "indicator",
         display_name: "Indicator Light",
         settings: [
-            {
-                name: "title",
-                display_name: "Title",
-                type: "text"
-            },
-            {
-                name: "value",
-                display_name: "Value",
-                type: "calculated"
-            },
-            {
-                name: "on_text",
-                display_name: "On Text",
-                type: "calculated"
-            },
-            {
-                name: "off_text",
-                display_name: "Off Text",
-                type: "calculated"
-            }
+	        {
+	            name: "title",
+	            display_name: "Title",
+	            type: "text"
+	        },
+	        {
+	            name: "value",
+	            display_name: "Value",
+	            type: "calculated"
+	        },
+	        {
+	            name: "on_text",
+	            display_name: "On Text",
+	            type: "calculated"
+	        },
+	        {
+	            name: "off_text",
+	            display_name: "Off Text",
+	            type: "calculated"
+	        }
         ],
         newInstance: function (settings, newInstanceCallback) {
             newInstanceCallback(new indicatorWidget(settings));
@@ -803,9 +990,11 @@
         }
     });
 
+    freeboard.addStyle('.html-widget', "white-space:normal;width:100%;height:100%");
+
     var htmlWidget = function (settings) {
         var self = this;
-        var htmlElement = $("<div></div>");
+        var htmlElement = $('<div class="html-widget"></div>');
         var currentSettings = settings;
 
         this.render = function (element) {
@@ -826,7 +1015,7 @@
         }
 
         this.getHeight = function () {
-            return currentSettings.height;
+            return Number(currentSettings.height);
         }
 
         this.onSettingsChanged(settings);
@@ -846,7 +1035,7 @@
             {
                 "name": "height",
                 "display_name": "Height Blocks",
-                "type": "text",
+                "type": "number",
                 "default_value": 4,
                 "description": "A height block is around 60 pixels"
             }
